@@ -27,3 +27,5 @@ and Pankaj.py file for code editor
 
 In the training folder, files are for refernce 
 and in the testing folder , files are for testing 
+
+This project is for Minor project intership
