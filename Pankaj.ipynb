@@ -1,0 +1,822 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": 1,
+   "metadata": {
+    "scrolled": true
+   },
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "WARNING:tensorflow:From C:\\Users\\SAINI SARKAR\\anaconda3\\lib\\site-packages\\tensorflow\\python\\compat\\v2_compat.py:96: disable_resource_variables (from tensorflow.python.ops.variable_scope) is deprecated and will be removed in a future version.\n",
+      "Instructions for updating:\n",
+      "non-resource variables are not supported in the long term\n"
+     ]
+    }
+   ],
+   "source": [
+    "import numpy as np\n",
+    "import os\n",
+    "import matplotlib\n",
+    "import matplotlib.pyplot as plt\n",
+    "import matplotlib.image as mpimg\n",
+    "import matplotlib.cm as cm\n",
+    "from scipy import ndimage\n",
+    "from skimage.measure import regionprops\n",
+    "from skimage import io\n",
+    "from skimage.filters import threshold_otsu   # For finding the threshold for grayscale to binary conversion\n",
+    "import tensorflow as tf\n",
+    "import pandas as pd\n",
+    "import numpy as np\n",
+    "from time import time\n",
+    "import keras\n",
+    "from tensorflow.python.framework import ops\n",
+    "import tensorflow.compat.v1 as tf\n",
+    "\n",
+    "tf.disable_v2_behavior() "
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "collapsed": true
+   },
+   "source": [
+    "## Path defined"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 2,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "genuine_image_paths = \"C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\real\"\n",
+    "forged_image_paths = \"C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\forged\""
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "collapsed": true
+   },
+   "source": [
+    "## Preprocessing the image"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 3,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def rgbgrey(img):\n",
+    "    # Converts rgb to grayscale\n",
+    "    greyimg = np.zeros((img.shape[0], img.shape[1]))\n",
+    "    for row in range(len(img)):\n",
+    "        for col in range(len(img[row])):\n",
+    "            greyimg[row][col] = np.average(img[row][col])\n",
+    "    return greyimg"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 4,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def greybin(img):\n",
+    "    # Converts grayscale to binary\n",
+    "    blur_radius = 0.8\n",
+    "    img = ndimage.gaussian_filter(img, blur_radius)  # to remove small components or noise\n",
+    "#     img = ndimage.binary_erosion(img).astype(img.dtype)\n",
+    "    thres = threshold_otsu(img)\n",
+    "    binimg = img > thres\n",
+    "    binimg = np.logical_not(binimg)\n",
+    "    return binimg"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 5,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def preproc(path, img=None, display=True):\n",
+    "    if img is None:\n",
+    "        img = mpimg.imread(path)\n",
+    "    if display:\n",
+    "        plt.imshow(img)\n",
+    "        plt.show()\n",
+    "    grey = rgbgrey(img) #rgb to grey\n",
+    "    if display:\n",
+    "        plt.imshow(grey, cmap = matplotlib.cm.Greys_r)\n",
+    "        plt.show()\n",
+    "    binimg = greybin(grey) #grey to binary\n",
+    "    if display:\n",
+    "        plt.imshow(binimg, cmap = matplotlib.cm.Greys_r)\n",
+    "        plt.show()\n",
+    "    r, c = np.where(binimg==1)\n",
+    "    # Now we will make a bounding box with the boundary as the position of pixels on extreme.\n",
+    "    # Thus we will get a cropped image with only the signature part.\n",
+    "    signimg = binimg[r.min(): r.max(), c.min(): c.max()]\n",
+    "    if display:\n",
+    "        plt.imshow(signimg, cmap = matplotlib.cm.Greys_r)\n",
+    "        plt.show()\n",
+    "    return signimg"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "## Feature Extraction\n"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 6,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def Ratio(img):\n",
+    "    a = 0\n",
+    "    for row in range(len(img)):\n",
+    "        for col in range(len(img[0])):\n",
+    "            if img[row][col]==True:\n",
+    "                a = a+1\n",
+    "    total = img.shape[0] * img.shape[1]\n",
+    "    return a/total"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 7,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def Centroid(img):\n",
+    "    numOfWhites = 0\n",
+    "    a = np.array([0,0])\n",
+    "    for row in range(len(img)):\n",
+    "        for col in range(len(img[0])):\n",
+    "            if img[row][col]==True:\n",
+    "                b = np.array([row,col])\n",
+    "                a = np.add(a,b)\n",
+    "                numOfWhites += 1\n",
+    "    rowcols = np.array([img.shape[0], img.shape[1]])\n",
+    "    centroid = a/numOfWhites\n",
+    "    centroid = centroid/rowcols\n",
+    "    return centroid[0], centroid[1]"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 8,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def EccentricitySolidity(img):\n",
+    "    r = regionprops(img.astype(\"int8\"))\n",
+    "    return r[0].eccentricity, r[0].solidity"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 9,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def SkewKurtosis(img):\n",
+    "    h,w = img.shape\n",
+    "    x = range(w)  # cols value\n",
+    "    y = range(h)  # rows value\n",
+    "    #calculate projections along the x and y axes\n",
+    "    xp = np.sum(img,axis=0)\n",
+    "    yp = np.sum(img,axis=1)\n",
+    "    #centroid\n",
+    "    cx = np.sum(x*xp)/np.sum(xp)\n",
+    "    cy = np.sum(y*yp)/np.sum(yp)\n",
+    "    #standard deviation\n",
+    "    x2 = (x-cx)**2\n",
+    "    y2 = (y-cy)**2\n",
+    "    sx = np.sqrt(np.sum(x2*xp)/np.sum(img))\n",
+    "    sy = np.sqrt(np.sum(y2*yp)/np.sum(img))\n",
+    "    \n",
+    "    #skewness\n",
+    "    x3 = (x-cx)**3\n",
+    "    y3 = (y-cy)**3\n",
+    "    skewx = np.sum(xp*x3)/(np.sum(img) * sx**3)\n",
+    "    skewy = np.sum(yp*y3)/(np.sum(img) * sy**3)\n",
+    "\n",
+    "    #Kurtosis\n",
+    "    x4 = (x-cx)**4\n",
+    "    y4 = (y-cy)**4\n",
+    "    # 3 is subtracted to calculate relative to the normal distribution\n",
+    "    kurtx = np.sum(xp*x4)/(np.sum(img) * sx**4) - 3\n",
+    "    kurty = np.sum(yp*y4)/(np.sum(img) * sy**4) - 3\n",
+    "\n",
+    "    return (skewx , skewy), (kurtx, kurty)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 10,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def getFeatures(path, img=None, display=False):\n",
+    "    if img is None:\n",
+    "        img = mpimg.imread(path)\n",
+    "    img = preproc(path, display=display)\n",
+    "    ratio = Ratio(img)\n",
+    "    centroid = Centroid(img)\n",
+    "    eccentricity, solidity = EccentricitySolidity(img)\n",
+    "    skewness, kurtosis = SkewKurtosis(img)\n",
+    "    retVal = (ratio, centroid, eccentricity, solidity, skewness, kurtosis)\n",
+    "    return retVal"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 11,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def getCSVFeatures(path, img=None, display=False):\n",
+    "    if img is None:\n",
+    "        img = mpimg.imread(path)\n",
+    "    temp = getFeatures(path, display=display)\n",
+    "    features = (temp[0], temp[1][0], temp[1][1], temp[2], temp[3], temp[4][0], temp[4][1], temp[5][0], temp[5][1])\n",
+    "    return features"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {
+    "collapsed": true
+   },
+   "source": [
+    "## Saving the features"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 12,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def makeCSV():\n",
+    "    if not(os.path.exists('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\Features')):\n",
+    "        os.mkdir('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\Features')\n",
+    "        print('New folder \"Features\" created')\n",
+    "    if not(os.path.exists('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\Features/Training')):\n",
+    "        os.mkdir('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\Features/Training')\n",
+    "        print('New folder \"Features/Training\" created')\n",
+    "    if not(os.path.exists('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\Features/Testing')):\n",
+    "        os.mkdir('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\Features/Testing')\n",
+    "        print('New folder \"Features/Testing\" created')\n",
+    "    # genuine signatures path\n",
+    "    gpath = genuine_image_paths\n",
+    "    # forged signatures path\n",
+    "    fpath = forged_image_paths\n",
+    "    for person in range(1,13):\n",
+    "        per = ('00'+str(person))[-3:]\n",
+    "        print('Saving features for person id-',per)\n",
+    "        \n",
+    "        with open('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\Features\\\\Training/training_'+per+'.csv', 'w') as handle:\n",
+    "            handle.write('ratio,cent_y,cent_x,eccentricity,solidity,skew_x,skew_y,kurt_x,kurt_y,output\\n')\n",
+    "            # Training set\n",
+    "            for i in range(0,3):\n",
+    "                source = os.path.join(gpath, per+per+'_00'+str(i)+'.png')\n",
+    "                features = getCSVFeatures(path=source)\n",
+    "                handle.write(','.join(map(str, features))+',1\\n')\n",
+    "            for i in range(0,3):\n",
+    "                source = os.path.join(fpath, '021'+per+'_00'+str(i)+'.png')\n",
+    "                features = getCSVFeatures(path=source)\n",
+    "                handle.write(','.join(map(str, features))+',0\\n')\n",
+    "        \n",
+    "        with open('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\Features\\\\Testing/testing_'+per+'.csv', 'w') as handle:\n",
+    "            handle.write('ratio,cent_y,cent_x,eccentricity,solidity,skew_x,skew_y,kurt_x,kurt_y,output\\n')\n",
+    "            # Testing set\n",
+    "            for i in range(3, 5):\n",
+    "                source = os.path.join(gpath, per+per+'_00'+str(i)+'.png')\n",
+    "                features = getCSVFeatures(path=source)\n",
+    "                handle.write(','.join(map(str, features))+',1\\n')\n",
+    "            for i in range(3,5):\n",
+    "                source = os.path.join(fpath, '021'+per+'_00'+str(i)+'.png')\n",
+    "                features = getCSVFeatures(path=source)\n",
+    "                handle.write(','.join(map(str, features))+',0\\n')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 13,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "New folder \"Features\" created\n",
+      "New folder \"Features/Training\" created\n",
+      "New folder \"Features/Testing\" created\n",
+      "Saving features for person id- 001\n",
+      "Saving features for person id- 002\n",
+      "Saving features for person id- 003\n",
+      "Saving features for person id- 004\n",
+      "Saving features for person id- 005\n",
+      "Saving features for person id- 006\n",
+      "Saving features for person id- 007\n",
+      "Saving features for person id- 008\n",
+      "Saving features for person id- 009\n",
+      "Saving features for person id- 010\n",
+      "Saving features for person id- 011\n",
+      "Saving features for person id- 012\n"
+     ]
+    }
+   ],
+   "source": [
+    "makeCSV()"
+   ]
+  },
+  {
+   "cell_type": "markdown",
+   "metadata": {},
+   "source": [
+    "# TF Model "
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 14,
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "def testing(path):\n",
+    "    feature = getCSVFeatures(path)\n",
+    "    if not(os.path.exists('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master/TestFeatures')):\n",
+    "        os.mkdir('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master/TestFeatures')\n",
+    "    with open('C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\TestFeatures/testcsv.csv', 'w') as handle:\n",
+    "        handle.write('ratio,cent_y,cent_x,eccentricity,solidity,skew_x,skew_y,kurt_x,kurt_y\\n')\n",
+    "        handle.write(','.join(map(str, feature))+'\\n')"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": 21,
+   "metadata": {},
+   "outputs": [
+    {
+     "name": "stdout",
+     "output_type": "stream",
+     "text": [
+      "Enter person's id : 009\n",
+      "Enter path of signature image : C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\forged\\021012_004.png\n",
+      "Forged Image\n"
+     ]
+    },
+    {
+     "data": {
+      "text/plain": [
+       "False"
+      ]
+     },
+     "execution_count": 21,
+     "metadata": {},
+     "output_type": "execute_result"
+    }
+   ],
+   "source": [
+    "n_input = 9\n",
+    "train_person_id = input(\"Enter person's id : \")\n",
+    "test_image_path = input(\"Enter path of signature image : \")\n",
+    "train_path = 'C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\Features\\\\Training/training_'+train_person_id+'.csv'\n",
+    "testing(test_image_path)\n",
+    "test_path = 'C:\\\\Users\\\\SAINI SARKAR\\\\Desktop\\\\AxisBankAiChallenge-master\\\\TestFeatures/testcsv.csv'\n",
+    "\n",
+    "def readCSV(train_path, test_path, type2=False):\n",
+    "    # Reading train data\n",
+    "    df = pd.read_csv(train_path, usecols=range(n_input))\n",
+    "    train_input = np.array(df.values)\n",
+    "    train_input = train_input.astype(np.float32, copy=False)  # Converting input to float_32\n",
+    "    df = pd.read_csv(train_path, usecols=(n_input,))\n",
+    "    temp = [elem[0] for elem in df.values]\n",
+    "    correct = np.array(temp)\n",
+    "    corr_train = keras.utils.to_categorical(correct,2)      # Converting to one hot\n",
+    "    # Reading test data\n",
+    "    df = pd.read_csv(test_path, usecols=range(n_input))\n",
+    "    test_input = np.array(df.values)\n",
+    "    test_input = test_input.astype(np.float32, copy=False)\n",
+    "    if not(type2):\n",
+    "        df = pd.read_csv(test_path, usecols=(n_input,))\n",
+    "        temp = [elem[0] for elem in df.values]\n",
+    "        correct = np.array(temp)\n",
+    "        corr_test = kearas.utils.to_categorical(correct,2)      # Converting to one hot\n",
+    "    if not(type2):\n",
+    "        return train_input, corr_train, test_input, corr_test\n",
+    "    else:\n",
+    "        return train_input, corr_train, test_input\n",
+    "\n",
+    "ops.reset_default_graph()\n",
+    "# Parameters\n",
+    "learning_rate = 0.001\n",
+    "training_epochs = 1000\n",
+    "display_step = 1\n",
+    "\n",
+    "# Network Parameters\n",
+    "n_hidden_1 = 7 # 1st layer number of neurons\n",
+    "n_hidden_2 = 10 # 2nd layer number of neurons\n",
+    "n_hidden_3 = 30 # 3rd layer\n",
+    "n_classes = 2 # no. of classes (genuine or forged)\n",
+    "\n",
+    "# tf Graph input\n",
+    "X = tf.placeholder(\"float\", [None, n_input])\n",
+    "Y = tf.placeholder(\"float\", [None, n_classes])\n",
+    "\n",
+    "# Store layers weight & bias\n",
+    "weights = {\n",
+    "    'h1': tf.Variable(tf.random_normal([n_input, n_hidden_1], seed=1)),\n",
+    "    'h2': tf.Variable(tf.random_normal([n_hidden_1, n_hidden_2])),\n",
+    "    'h3': tf.Variable(tf.random_normal([n_hidden_2, n_hidden_3])),\n",
+    "    'out': tf.Variable(tf.random_normal([n_hidden_1, n_classes], seed=2))\n",
+    "}\n",
+    "biases = {\n",
+    "    'b1': tf.Variable(tf.random_normal([n_hidden_1], seed=3)),\n",
+    "    'b2': tf.Variable(tf.random_normal([n_hidden_2])),\n",
+    "    'b3': tf.Variable(tf.random_normal([n_hidden_3])),\n",
+    "    'out': tf.Variable(tf.random_normal([n_classes], seed=4))\n",
+    "}\n",
+    "\n",
+    "\n",
+    "# Create model\n",
+    "def multilayer_perceptron(x):\n",
+    "    layer_1 = tf.tanh((tf.matmul(x, weights['h1']) + biases['b1']))\n",
+    "    layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])\n",
+    "    layer_3 = tf.add(tf.matmul(layer_2, weights['h3']), biases['b3'])\n",
+    "    out_layer = tf.tanh(tf.matmul(layer_1, weights['out']) + biases['out'])\n",
+    "    return out_layer\n",
+    "\n",
+    "# Construct model\n",
+    "logits = multilayer_perceptron(X)\n",
+    "\n",
+    "# Define loss and optimizer\n",
+    "\n",
+    "loss_op = tf.reduce_mean(tf.squared_difference(logits, Y))\n",
+    "optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate)\n",
+    "train_op = optimizer.minimize(loss_op)\n",
+    "# For accuracies\n",
+    "pred = tf.nn.softmax(logits)  # Apply softmax to logits\n",
+    "correct_prediction = tf.equal(tf.argmax(pred,1), tf.argmax(Y,1))\n",
+    "accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))\n",
+    "# Initializing the variables\n",
+    "init = tf.global_variables_initializer()\n",
+    "\n",
+    "def evaluate(train_path, test_path, type2=False):   \n",
+    "    if not(type2):\n",
+    "        train_input, corr_train, test_input, corr_test = readCSV(train_path, test_path)\n",
+    "    else:\n",
+    "        train_input, corr_train, test_input = readCSV(train_path, test_path, type2)\n",
+    "    ans = 'Random'\n",
+    "    with tf.Session() as sess:\n",
+    "        sess.run(init)\n",
+    "        # Training cycle\n",
+    "        for epoch in range(training_epochs):\n",
+    "            # Run optimization op (backprop) and cost op (to get loss value)\n",
+    "            _, cost = sess.run([train_op, loss_op], feed_dict={X: train_input, Y: corr_train})\n",
+    "            if cost<0.0001:\n",
+    "                break\n",
+    "#             # Display logs per epoch step\n",
+    "#             if epoch % 999 == 0:\n",
+    "#                 print(\"Epoch:\", '%04d' % (epoch+1), \"cost={:.9f}\".format(cost))\n",
+    "#         print(\"Optimization Finished!\")\n",
+    "        \n",
+    "        # Finding accuracies\n",
+    "        accuracy1 =  accuracy.eval({X: train_input, Y: corr_train})\n",
+    "#         print(\"Accuracy for train:\", accuracy1)\n",
+    "#         print(\"Accuracy for test:\", accuracy2)\n",
+    "        if type2 is False:\n",
+    "            accuracy2 =  accuracy.eval({X: test_input, Y: corr_test})\n",
+    "            return accuracy1, accuracy2\n",
+    "        else:\n",
+    "            prediction = pred.eval({X: test_input})\n",
+    "            if prediction[0][1]>prediction[0][0]:\n",
+    "                print('Genuine Image')\n",
+    "                return True\n",
+    "            else:\n",
+    "                print('Forged Image')\n",
+    "                return False\n",
+    "\n",
+    "\n",
+    "def trainAndTest(rate=0.001, epochs=1700, neurons=7, display=False):    \n",
+    "    start = time()\n",
+    "\n",
+    "    # Parameters\n",
+    "    global training_rate, training_epochs, n_hidden_1\n",
+    "    learning_rate = rate\n",
+    "    training_epochs = epochs\n",
+    "\n",
+    "    # Network Parameters\n",
+    "    n_hidden_1 = neurons # 1st layer number of neurons\n",
+    "    n_hidden_2 = 7 # 2nd layer number of neurons\n",
+    "    n_hidden_3 = 30 # 3rd layer\n",
+    "\n",
+    "    train_avg, test_avg = 0, 0\n",
+    "    n = 10\n",
+    "    for i in range(1,n+1):\n",
+    "        if display:\n",
+    "            print(\"Running for Person id\",i)\n",
+    "        temp = ('0'+str(i))[-2:]\n",
+    "        train_score, test_score = evaluate(train_path.replace('01',temp), test_path.replace('01',temp))\n",
+    "        train_avg += train_score\n",
+    "        test_avg += test_score\n",
+    "    if display:\n",
+    "#         print(\"Number of neurons in Hidden layer-\", n_hidden_1)\n",
+    "        print(\"Training average-\", train_avg/n)\n",
+    "        print(\"Testing average-\", test_avg/n)\n",
+    "        print(\"Time taken-\", time()-start)\n",
+    "    return train_avg/n, test_avg/n, (time()-start)/n\n",
+    "\n",
+    "\n",
+    "evaluate(train_path, test_path, type2=True)"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {},
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "metadata": {
+    "collapsed": true
+   },
+   "outputs": [],
+   "source": []
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.8.5"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 2
+}
