@@ -18,8 +18,8 @@ import tensorflow.compat.v1 as tf
 
 tf.disable_v2_behavior() 
 
-genuine_image_paths = "C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\real"
-forged_image_paths = "C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\forged"
+genuine_image_paths = "real"
+forged_image_paths = "forged"
 
 
 def rgbgrey(img):
@@ -144,14 +144,14 @@ def getCSVFeatures(path, img=None, display=False):
     return features
 
 def makeCSV():
-    if not(os.path.exists('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\Features')):
-        os.mkdir('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\Features')
+    if not(os.path.exists('Features')):
+        os.mkdir('Features')
         print('New folder "Features" created')
-    if not(os.path.exists('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\Features/Training')):
-        os.mkdir('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\Features/Training')
+    if not(os.path.exists('Features/Training')):
+        os.mkdir('Features/Training')
         print('New folder "Features/Training" created')
-    if not(os.path.exists('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\Features/Testing')):
-        os.mkdir('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\Features/Testing')
+    if not(os.path.exists('CFeatures/Testing')):
+        os.mkdir('Features/Testing')
         print('New folder "Features/Testing" created')
     # genuine signatures path
     gpath = genuine_image_paths
@@ -161,7 +161,7 @@ def makeCSV():
         per = ('00'+str(person))[-3:]
         print('Saving features for person id-',per)
         
-        with open('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\Features\\Training/training_'+per+'.csv', 'w') as handle:
+        with open('Features/Training/training_'+per+'.csv', 'w') as handle:
             handle.write('ratio,cent_y,cent_x,eccentricity,solidity,skew_x,skew_y,kurt_x,kurt_y,output\n')
             # Training set
             for i in range(0,3):
@@ -173,7 +173,7 @@ def makeCSV():
                 features = getCSVFeatures(path=source)
                 handle.write(','.join(map(str, features))+',0\n')
         
-        with open('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\Features\\Testing/testing_'+per+'.csv', 'w') as handle:
+        with open('Features/Testing/testing_'+per+'.csv', 'w') as handle:
             handle.write('ratio,cent_y,cent_x,eccentricity,solidity,skew_x,skew_y,kurt_x,kurt_y,output\n')
             # Testing set
             for i in range(3, 5):
@@ -190,9 +190,9 @@ def makeCSV():
 
 def testing(path):
     feature = getCSVFeatures(path)
-    if not(os.path.exists('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master/TestFeatures')):
-        os.mkdir('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master/TestFeatures')
-    with open('C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\TestFeatures/testcsv.csv', 'w') as handle:
+    if not(os.path.exists('TestFeatures')):
+        os.mkdir('TestFeatures')
+    with open('TestFeatures/testcsv.csv', 'w') as handle:
         handle.write('ratio,cent_y,cent_x,eccentricity,solidity,skew_x,skew_y,kurt_x,kurt_y\n')
         handle.write(','.join(map(str, feature))+'\n')
 
@@ -203,9 +203,9 @@ makeCSV()
 n_input = 9
 train_person_id = input("Enter person's id : ")
 test_image_path = input("Enter path of signature image : ")
-train_path = 'C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\Features\\Training/training_'+train_person_id+'.csv'
+train_path = 'Features/Training/training_'+train_person_id+'.csv'
 testing(test_image_path)
-test_path = 'C:\\Users\\SAINI SARKAR\\Desktop\\AxisBankAiChallenge-master\\TestFeatures/testcsv.csv'
+test_path = 'TestFeatures/testcsv.csv'
 
 def readCSV(train_path, test_path, type2=False):
     # Reading train data
