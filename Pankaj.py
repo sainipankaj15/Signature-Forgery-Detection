@@ -150,7 +150,7 @@ def makeCSV():
     if not(os.path.exists('Features/Training')):
         os.mkdir('Features/Training')
         print('New folder "Features/Training" created')
-    if not(os.path.exists('CFeatures/Testing')):
+    if not(os.path.exists('Features/Testing')):
         os.mkdir('Features/Testing')
         print('New folder "Features/Testing" created')
     # genuine signatures path
