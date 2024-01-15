@@ -18,6 +18,7 @@ import tensorflow.compat.v1 as tf
 
 tf.disable_v2_behavior() 
 
+# paths to images
 genuine_image_paths = "real"
 forged_image_paths = "forged"
 
